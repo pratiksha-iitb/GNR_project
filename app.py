@@ -108,7 +108,8 @@ def build_zip(res, figs):
         z.writestr(f"K{k}/difference_map.png", png_bytes(r["diff"]))
         z.writestr("cluster_sizes.csv", res["cluster_sizes"].to_csv(index=False))
         z.writestr("clustering_quality_metrics.csv", res["metrics"].to_csv(index=False))
-        z.writestr("dbi_decorrelated.csv", res["dbi"].to_csv(index=False))
+        if res["dbi"] is not None:
+            z.writestr("dbi_decorrelated.csv", res["dbi"].to_csv(index=False))
         z.writestr("parameters.csv",
                    pd.DataFrame(list(res["params"].items()),
                                 columns=["Parameter", "Value"]).to_csv(index=False))
@@ -118,6 +119,7 @@ def build_zip(res, figs):
 def reset_defaults():
     for key, val in D.items():
         st.session_state[f"p_{key}"] = val
+    st.session_state["k_mode_radio"] = "Auto (optimal K)"
 
 
 # ---------------------------------------------------------------
@@ -131,8 +133,17 @@ with st.sidebar:
     uploaded = st.file_uploader("Input image", type=["jpg", "jpeg", "png", "tif", "tiff", "bmp", "webp"])
     use_sample = st.checkbox("Use built-in sample image instead", value=False)
 
-    st.info("K is chosen automatically: the Davies-Bouldin Index is searched on the "
-            "decorrelated image, and both images are clustered with that K.")
+    st.subheader("Number of clusters (K)")
+    k_mode_label = st.radio(
+        "K selection", ["Auto (optimal K)", "Manual"],
+        key="k_mode_radio", label_visibility="collapsed",
+        help="Auto: finds the optimal K (Davies-Bouldin Index) on the decorrelated "
+             "image and clusters both images with it. "
+             "Manual: you choose K; the search is skipped (faster).")
+    if k_mode_label == "Manual":
+        st.slider("K", 2, 20, key="p_manual_k")
+    else:
+        st.caption("K = optimal K of the decorrelated image (Davies-Bouldin Index).")
 
     with st.expander("Advanced settings"):
         st.number_input("Max image side (px)", 64, 2000, step=64, key="p_max_side",
@@ -183,7 +194,8 @@ if run:
 
     with st.status("Running...", expanded=True) as status:
         try:
-            res = pl.run_all(img, p, log=lambda m: st.write(m))
+            res = pl.run_all(img, p, k_mode="auto" if k_mode_label.startswith("Auto") else "manual",
+                             log=lambda m: st.write(m))
         except Exception as e:
             status.update(label="Failed", state="error")
             st.error(f"Pipeline error: {e}")
@@ -191,8 +203,9 @@ if run:
         status.update(label="Finished", state="complete", expanded=False)
 
     figs = {"pc_histograms.png": fig_pc_hist(res["pc_before"], res["pc_after"]),
-            "rgb_correlation.png": fig_corr(res["corr_o"], res["corr_d"]),
-            "dbi_vs_k.png": fig_dbi(res)}
+            "rgb_correlation.png": fig_corr(res["corr_o"], res["corr_d"])}
+    if res["dbi"] is not None:
+        figs["dbi_vs_k.png"] = fig_dbi(res)
     res["figs"] = figs
     res["zip"] = build_zip(res, {n: fig_bytes(f) for n, f in figs.items()})
     st.session_state["res"] = res
@@ -207,7 +220,8 @@ if res is None:
 
 h, w = res["shape"]
 st.write(f"Image: **{w} x {h}** px ({h*w:,} pixels) | "
-         f"Optimal K (from decorrelated image): **{res['k']}**")
+         f"K: **{res['k']}** "
+         f"({'optimal K of decorrelated image' if res['k_mode']=='auto' else 'manual'})")
 
 tabs = st.tabs(["1. Enhancement", "2. Choosing K", "3. Cluster maps",
                 "4. Comparison", "5. Download"])
@@ -256,13 +270,17 @@ with tabs[0]:
 
 # ---- Tab 2 ----
 with tabs[1]:
-    st.metric("Optimal K (decorrelated image)", res["k"],
-              help=f"Davies-Bouldin index = {res['best_dbi']:.4f}")
-    st.caption("The Davies-Bouldin search runs on the decorrelated image only. "
-               "Both images are then clustered with this K.")
-    st.pyplot(res["figs"]["dbi_vs_k.png"])
-    with st.expander("DBI values"):
-        st.dataframe(res["dbi"].round(4), width="stretch")
+    if res["dbi"] is None:
+        st.info(f"Manual K mode (K = {res['k']}): the Davies-Bouldin search was skipped. "
+                "Switch to Auto in the sidebar to see it.")
+    else:
+        st.metric("Optimal K (decorrelated image)", res["k"],
+                  help=f"Davies-Bouldin index = {res['best_dbi']:.4f}")
+        st.caption("The Davies-Bouldin search runs on the decorrelated image only. "
+                   "Both images are then clustered with this K.")
+        st.pyplot(res["figs"]["dbi_vs_k.png"])
+        with st.expander("DBI values"):
+            st.dataframe(res["dbi"].round(4), width="stretch")
 
 # ---- Tab 3 ----
 with tabs[2]:

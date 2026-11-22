@@ -28,6 +28,7 @@ DEFAULTS = {
     "sample_size": 10000,  # pixels used for DBI search + quality metrics
     "k_min": 2,            # DBI search start
     "k_max": 20,           # DBI search end
+    "manual_k": 6,         # used only in manual-K mode
     "auto_extend": True,   # extend search by +10 (up to 50) if best K is at the upper edge
 }
 ABSOLUTE_MAX_K = 50
@@ -220,11 +221,13 @@ def evaluate_clustering(X, labels, indices, image_name, k):
 # --------------------------------------------------------------
 # 5. Full pipeline
 # --------------------------------------------------------------
-def run_all(img, params, log=None):
+def run_all(img, params, k_mode="auto", log=None):
     """
-    Optimal K is found with the Davies-Bouldin Index on the DECORRELATED
-    (enhanced) image only. Both the original and the decorrelated image are
-    then clustered with that same K, so the comparison is like for like.
+    k_mode = "auto"   : optimal K is found with the Davies-Bouldin Index on the
+                        DECORRELATED (enhanced) image only.
+    k_mode = "manual" : K is taken from params["manual_k"]; DBI search skipped.
+    In both modes the original and decorrelated image are clustered with the
+    same K, so the comparison is like for like.
 
     params : dict with keys of DEFAULTS
     """
@@ -245,10 +248,13 @@ def run_all(img, params, log=None):
     n_sample = min(p["sample_size"], len(X_o))
     idx = rng.choice(len(X_o), size=n_sample, replace=False)
 
-    # ---- choose K from the decorrelated image only ----
-    k, best_dbi, df_dbi = find_optimal_k(
-        X_d[idx], "Decorrelated", p["k_min"], p["k_max"], p["n_init"],
-        p["max_iter"], p["seed"], p["auto_extend"], say)
+    # ---- choose K ----
+    if k_mode == "auto":
+        k, best_dbi, df_dbi = find_optimal_k(
+            X_d[idx], "Decorrelated", p["k_min"], p["k_max"], p["n_init"],
+            p["max_iter"], p["seed"], p["auto_extend"], say)
+    else:
+        k, best_dbi, df_dbi = int(p["manual_k"]), None, None
 
     res = {
         "img": img, "dcs": dcs, "info": info,
@@ -256,7 +262,7 @@ def run_all(img, params, log=None):
         "corr_o": corr_o, "corr_d": corr_d,
         "avg_corr_o": average_absolute_correlation(corr_o),
         "avg_corr_d": average_absolute_correlation(corr_d),
-        "params": p, "shape": (h, w),
+        "params": p, "shape": (h, w), "k_mode": k_mode,
         "k": k, "best_dbi": best_dbi, "dbi": df_dbi,
     }
 

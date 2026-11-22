@@ -29,8 +29,8 @@ That is all. The default settings are the ones used in our project, so you do no
 | Tab | What it shows |
 |---|---|
 | **1. Enhancement** | Original vs decorrelated image, correlation before and after, principal components, histograms |
-| **2. Choosing K** | Davies-Bouldin curve and the optimal K (from the decorrelated image) |
-| **3. Cluster maps** | Cluster maps and colour segmentation, original vs decorrelated, at the optimal K |
+| **2. Choosing K** | Davies-Bouldin curve and the optimal K (Auto mode only) |
+| **3. Cluster maps** | Cluster maps and colour segmentation, original vs decorrelated, at the chosen K |
 | **4. Comparison** | Pixel-change map, cluster sizes, quality scores (Silhouette, Davies-Bouldin, Calinski-Harabasz) |
 | **5. Download** | ZIP with all images, figures and CSV files |
 
@@ -38,9 +38,11 @@ That is all. The default settings are the ones used in our project, so you do no
 
 ## Settings (optional)
 
-**K (number of clusters)** is chosen automatically. The app searches for the best K using the
-Davies-Bouldin Index on the **decorrelated (enhanced) image only**, then clusters both the original
-and the decorrelated image with that same K. You do not need to enter K.
+**K selection** (sidebar)
+- **Auto (optimal K)**: default. The app finds the best K using the Davies-Bouldin Index on the
+  **decorrelated (enhanced) image**, then clusters both the original and the decorrelated image with that K.
+- **Manual**: you choose K with the slider (2 to 20). Both images are clustered with your K and the
+  Davies-Bouldin search is skipped, so it is faster.
 
 **Advanced settings** (click the expander in the sidebar). Defaults are shown.
 
@@ -59,7 +61,7 @@ Click **Reset to defaults** to restore all of these.
 
 ## Tips
 
-- If the app is slow, lower **Max image side**, **n_init**, or narrow the **K min / K max** range.
+- If the app is slow, use **Manual** K, or lower **Max image side** / **n_init**.
 - Very large images are resized to the max side (512 px by default).
 - Colours in the cluster maps are only labels. They are not matched between the two images.
 
