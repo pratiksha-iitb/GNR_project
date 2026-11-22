@@ -1,81 +1,83 @@
-# Decorrelation Contrast Enhancement and K-Means Clustering (GNR607)
+# Decorrelation Contrast Enhancement and K-Means Clustering
 
-A small web app that wraps the project notebook. Upload an RGB image and the app:
+**GNR607 Project**
+Adrika (23b2171), Anousha (23b2249), Avasthi (23b2227), Pratiksha (23b2111)
 
-1. applies PCA-based decorrelation contrast enhancement,
-2. picks K with the Davies-Bouldin Index (or uses a K you choose),
-3. clusters the original and decorrelated images with K-Means,
-4. compares cluster maps, cluster sizes, pixel-level changes and quality metrics
-   (Silhouette, Davies-Bouldin, Calinski-Harabasz).
+**Live app: https://gnrproject.streamlit.app/**
 
-## Files
+This app answers one question: *how does decorrelating an RGB image change the clusters K-Means finds?*
+It enhances your image, clusters the original and the enhanced version, and compares the two.
 
-| File | Purpose |
-|---|---|
-| `app.py` | Streamlit user interface |
-| `pipeline.py` | All processing code (functions taken from the notebook) |
-| `requirements.txt` | Python dependencies |
-
-## Run it locally
-
-You need Python 3.9 or newer.
-
-```bash
-# 1. Go to the project folder
-cd gnr607_app
-
-# 2. (Recommended) create a virtual environment
-python -m venv venv
-# Windows:        venv\Scripts\activate
-# macOS / Linux:  source venv/bin/activate
-
-# 3. Install dependencies
-pip install -r requirements.txt
-
-# 4. Start the app
-streamlit run app.py
-```
-
-Your browser opens at `http://localhost:8501`. If it does not, open that address manually.
-Stop the app with `Ctrl + C` in the terminal.
+---
 
 ## How to use
 
-**With defaults (quickest):** upload an image in the sidebar and click **Run analysis**.
-The "Use built-in sample image" box lets you test without a file.
+1. Open the link: https://gnrproject.streamlit.app/
+   (If the page says the app is asleep, click **Yes, get this app back up!** and wait a minute.)
+2. In the left sidebar, click **Browse files** and upload an image (JPG, PNG, etc.).
+   No image? Tick **Use built-in sample image instead**.
+3. Click **Run analysis**.
+4. Wait for the run to finish (usually under a minute for a default-size image).
+5. Look through the tabs at the top of the page.
 
-**With your own settings:** choose Auto or Manual K and open **Advanced settings**.
-**Reset to defaults** restores everything.
+That is all. The default settings are the ones used in our project, so you do not need to change anything.
 
-| Setting | Default | Meaning |
-|---|---|---|
-| K selection | Auto (Davies-Bouldin) | Auto finds the best K for each image and runs all combinations. Manual uses one K for both images and skips the DBI search (faster). |
-| Manual K | 6 | Only used in Manual mode |
-| Max image side | 512 px | Larger images are down-scaled |
-| n_init | 10 | K-Means random restarts |
-| Max iterations | 300 | K-Means iteration cap (K-Means has no epochs) |
-| Random seed | 42 | Makes results reproducible |
-| Sample size | 10,000 px | Pixels used for the DBI search and quality metrics |
-| K min / K max | 2 / 20 | DBI search range |
-| Auto-extend | on | If the best K is at K max, the search extends by 10 (up to 50) |
+---
 
-## Output tabs
+## What you see in each tab
 
-1. **Enhancement**: original vs decorrelated image, correlation before/after, % clipped pixels, principal components table, correlation heatmaps, PC histograms, covariance matrices.
-2. **Choosing K**: DBI vs K curves and the chosen K for each image (Auto mode).
-3. **Cluster maps**: label maps and colour segmentations, original vs decorrelated, at each K.
-4. **Comparison**: pixel-change map, cluster size charts, quality metrics table, and which image wins each metric.
-5. **Download**: ZIP with all images, figures and CSVs.
+| Tab | What it shows |
+|---|---|
+| **1. Enhancement** | Original vs decorrelated image, correlation before and after, principal components, histograms |
+| **2. Choosing K** | Davies-Bouldin curve and the optimal K (from the decorrelated image) |
+| **3. Cluster maps** | Cluster maps and colour segmentation, original vs decorrelated, at the optimal K |
+| **4. Comparison** | Pixel-change map, cluster sizes, quality scores (Silhouette, Davies-Bouldin, Calinski-Harabasz) |
+| **5. Download** | ZIP with all images, figures and CSV files |
 
-## Notes
+---
 
-- Runtime grows with image size, `n_init` and the K range. If it is slow, lower **Max image side**, **n_init**, or use **Manual** K.
-- In Auto mode, if both images pick the same K, only one K is clustered.
-- The notebook's default `MAX_SIDE` is 512 px; the PPT mentions 1080 px as a loader limit. Change it in Advanced settings if you want to match the PPT.
-- Colours in cluster maps are arbitrary labels and are not matched between images; the pixel-change map does match labels (Hungarian algorithm) before comparing.
+## Settings (optional)
 
-## Deploy online (optional, free)
+**K (number of clusters)** is chosen automatically. The app searches for the best K using the
+Davies-Bouldin Index on the **decorrelated (enhanced) image only**, then clusters both the original
+and the decorrelated image with that same K. You do not need to enter K.
 
-1. Push the three files to a GitHub repository.
-2. Go to https://share.streamlit.io, sign in with GitHub, click **New app**, and select the repo and `app.py`.
-3. Streamlit Community Cloud installs `requirements.txt` and gives you a public link.
+**Advanced settings** (click the expander in the sidebar). Defaults are shown.
+
+| Setting | Default |
+|---|---|
+| Max image side | 512 px |
+| K-Means initialisations (n_init) | 10 |
+| K-Means max iterations | 300 |
+| Random seed | 42 |
+| Sample size for metrics | 10,000 pixels |
+| K min / K max | 2 / 20 |
+
+Click **Reset to defaults** to restore all of these.
+
+---
+
+## Tips
+
+- If the app is slow, lower **Max image side**, **n_init**, or narrow the **K min / K max** range.
+- Very large images are resized to the max side (512 px by default).
+- Colours in the cluster maps are only labels. They are not matched between the two images.
+
+---
+
+## Run on your own computer (optional)
+
+Needs Python 3. Open Terminal in the project folder and run:
+
+```bash
+python3 -m venv venv
+source venv/bin/activate        # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+## Files
+
+- `app.py`: the user interface
+- `pipeline.py`: the image processing and clustering code
+- `requirements.txt`: Python packages needed

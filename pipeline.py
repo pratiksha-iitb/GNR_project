@@ -29,7 +29,6 @@ DEFAULTS = {
     "k_min": 2,            # DBI search start
     "k_max": 20,           # DBI search end
     "auto_extend": True,   # extend search by +10 (up to 50) if best K is at the upper edge
-    "manual_k": 6,         # used only in manual-K mode
 }
 ABSOLUTE_MAX_K = 50
 
@@ -221,10 +220,12 @@ def evaluate_clustering(X, labels, indices, image_name, k):
 # --------------------------------------------------------------
 # 5. Full pipeline
 # --------------------------------------------------------------
-def run_all(img, k_mode, params, log=None):
+def run_all(img, params, log=None):
     """
-    k_mode : "auto"   -> DBI search on both images; clusters at each image's best K
-             "manual" -> one user-chosen K for both images (DBI search skipped)
+    Optimal K is found with the Davies-Bouldin Index on the DECORRELATED
+    (enhanced) image only. Both the original and the decorrelated image are
+    then clustered with that same K, so the comparison is like for like.
+
     params : dict with keys of DEFAULTS
     """
     p = {**DEFAULTS, **params}
@@ -244,57 +245,42 @@ def run_all(img, k_mode, params, log=None):
     n_sample = min(p["sample_size"], len(X_o))
     idx = rng.choice(len(X_o), size=n_sample, replace=False)
 
+    # ---- choose K from the decorrelated image only ----
+    k, best_dbi, df_dbi = find_optimal_k(
+        X_d[idx], "Decorrelated", p["k_min"], p["k_max"], p["n_init"],
+        p["max_iter"], p["seed"], p["auto_extend"], say)
+
     res = {
         "img": img, "dcs": dcs, "info": info,
         "pc_before": pc_before, "pc_after": pc_after,
         "corr_o": corr_o, "corr_d": corr_d,
         "avg_corr_o": average_absolute_correlation(corr_o),
         "avg_corr_d": average_absolute_correlation(corr_d),
-        "k_mode": k_mode, "params": p, "shape": (h, w),
-        "dbi_o": None, "dbi_d": None,
+        "params": p, "shape": (h, w),
+        "k": k, "best_dbi": best_dbi, "dbi": df_dbi,
     }
 
-    # ---- choose K ----
-    if k_mode == "auto":
-        k_o, best_o, df_o = find_optimal_k(
-            X_o[idx], "Original", p["k_min"], p["k_max"], p["n_init"],
-            p["max_iter"], p["seed"], p["auto_extend"], say)
-        k_d, best_d, df_d = find_optimal_k(
-            X_d[idx], "Decorrelated", p["k_min"], p["k_max"], p["n_init"],
-            p["max_iter"], p["seed"], p["auto_extend"], say)
-        res.update(k_o=k_o, k_d=k_d, best_dbi_o=best_o, best_dbi_d=best_d,
-                   dbi_o=df_o, dbi_d=df_d)
-        ks = sorted({k_o, k_d})
-    else:
-        ks = [int(p["manual_k"])]
-        res.update(k_o=ks[0], k_d=ks[0])
-    res["ks"] = ks
+    # ---- cluster both images at that K ----
+    say(f"Clustering both images at K = {k}...")
+    lab_o, km_o = run_kmeans(X_o, k, p["n_init"], p["max_iter"], p["seed"])
+    lab_d, km_d = run_kmeans(X_d, k, p["n_init"], p["max_iter"], p["seed"])
+    diff, same, changed = create_cluster_difference_map(lab_o, lab_d, k, (h, w))
 
-    # ---- final clustering at every K ----
-    res["runs"] = {}
-    sizes, metrics = [], []
-    for k in ks:
-        say(f"Clustering both images at K = {k}...")
-        lab_o, km_o = run_kmeans(X_o, k, p["n_init"], p["max_iter"], p["seed"])
-        lab_d, km_d = run_kmeans(X_d, k, p["n_init"], p["max_iter"], p["seed"])
-        diff, same, changed = create_cluster_difference_map(lab_o, lab_d, k, (h, w))
-        res["runs"][k] = {
-            "lab_o": lab_o, "lab_d": lab_d,
-            "map_o": label_map_rgb(lab_o, k, (h, w)),
-            "map_d": label_map_rgb(lab_d, k, (h, w)),
-            "seg_o": create_segmented_image(lab_o, km_o, (h, w)),
-            "seg_d": create_segmented_image(lab_d, km_d, (h, w)),
-            "diff": diff, "pct_same": same, "pct_changed": changed,
-            "sizes_o": calculate_cluster_sizes(lab_o, k, "Original"),
-            "sizes_d": calculate_cluster_sizes(lab_d, k, "Decorrelated"),
-            "centres_o": km_o.cluster_centers_ * 255,
-            "centres_d": km_d.cluster_centers_ * 255,
-        }
-        sizes += [res["runs"][k]["sizes_o"], res["runs"][k]["sizes_d"]]
-        metrics.append(evaluate_clustering(X_o, lab_o, idx, "Original", k))
-        metrics.append(evaluate_clustering(X_d, lab_d, idx, "Decorrelated", k))
-
-    res["cluster_sizes"] = pd.concat(sizes, ignore_index=True)
-    res["metrics"] = pd.DataFrame(metrics)
+    res["run"] = {
+        "lab_o": lab_o, "lab_d": lab_d,
+        "map_o": label_map_rgb(lab_o, k, (h, w)),
+        "map_d": label_map_rgb(lab_d, k, (h, w)),
+        "seg_o": create_segmented_image(lab_o, km_o, (h, w)),
+        "seg_d": create_segmented_image(lab_d, km_d, (h, w)),
+        "diff": diff, "pct_same": same, "pct_changed": changed,
+        "sizes_o": calculate_cluster_sizes(lab_o, k, "Original"),
+        "sizes_d": calculate_cluster_sizes(lab_d, k, "Decorrelated"),
+    }
+    res["cluster_sizes"] = pd.concat(
+        [res["run"]["sizes_o"], res["run"]["sizes_d"]], ignore_index=True)
+    res["metrics"] = pd.DataFrame([
+        evaluate_clustering(X_o, lab_o, idx, "Original", k),
+        evaluate_clustering(X_d, lab_d, idx, "Decorrelated", k),
+    ])
     say("Done.")
     return res

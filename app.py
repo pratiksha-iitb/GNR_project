@@ -68,13 +68,14 @@ def fig_corr(corr_o, corr_d):
 
 
 def fig_dbi(res):
-    fig, ax = plt.subplots(1, 2, figsize=(12, 4))
-    for a, df, k, t in ((ax[0], res["dbi_o"], res["k_o"], "Original"),
-                        (ax[1], res["dbi_d"], res["k_d"], "Decorrelated")):
-        a.plot(df["K"], df["Davies-Bouldin Index"], marker="o")
-        a.axvline(k, linestyle="--", label=f"Optimal K = {k}")
-        a.set_title(t); a.set_xlabel("Number of clusters (K)")
-        a.set_ylabel("Davies-Bouldin index"); a.grid(True); a.legend()
+    df, k = res["dbi"], res["k"]
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(df["K"], df["Davies-Bouldin Index"], marker="o")
+    ax.axvline(k, linestyle="--", label=f"Optimal K = {k}")
+    ax.set_title("Decorrelated image")
+    ax.set_xlabel("Number of clusters (K)")
+    ax.set_ylabel("Davies-Bouldin index")
+    ax.grid(True); ax.legend()
     fig.tight_layout()
     return fig
 
@@ -99,17 +100,15 @@ def build_zip(res, figs):
         z.writestr("decorrelated.png", png_bytes(res["dcs"]))
         for name, b in figs.items():
             z.writestr(name, b)
-        for k, r in res["runs"].items():
-            z.writestr(f"K{k}/labelmap_original.png", png_bytes(r["map_o"]))
-            z.writestr(f"K{k}/labelmap_decorrelated.png", png_bytes(r["map_d"]))
-            z.writestr(f"K{k}/segmentation_original.png", png_bytes(r["seg_o"]))
-            z.writestr(f"K{k}/segmentation_decorrelated.png", png_bytes(r["seg_d"]))
-            z.writestr(f"K{k}/difference_map.png", png_bytes(r["diff"]))
+        k, r = res["k"], res["run"]
+        z.writestr(f"K{k}/labelmap_original.png", png_bytes(r["map_o"]))
+        z.writestr(f"K{k}/labelmap_decorrelated.png", png_bytes(r["map_d"]))
+        z.writestr(f"K{k}/segmentation_original.png", png_bytes(r["seg_o"]))
+        z.writestr(f"K{k}/segmentation_decorrelated.png", png_bytes(r["seg_d"]))
+        z.writestr(f"K{k}/difference_map.png", png_bytes(r["diff"]))
         z.writestr("cluster_sizes.csv", res["cluster_sizes"].to_csv(index=False))
         z.writestr("clustering_quality_metrics.csv", res["metrics"].to_csv(index=False))
-        if res["dbi_o"] is not None:
-            z.writestr("dbi_original.csv", res["dbi_o"].to_csv(index=False))
-            z.writestr("dbi_decorrelated.csv", res["dbi_d"].to_csv(index=False))
+        z.writestr("dbi_decorrelated.csv", res["dbi"].to_csv(index=False))
         z.writestr("parameters.csv",
                    pd.DataFrame(list(res["params"].items()),
                                 columns=["Parameter", "Value"]).to_csv(index=False))
@@ -119,7 +118,6 @@ def build_zip(res, figs):
 def reset_defaults():
     for key, val in D.items():
         st.session_state[f"p_{key}"] = val
-    st.session_state["k_mode_radio"] = "Auto (Davies-Bouldin)"
 
 
 # ---------------------------------------------------------------
@@ -133,15 +131,8 @@ with st.sidebar:
     uploaded = st.file_uploader("Input image", type=["jpg", "jpeg", "png", "tif", "tiff", "bmp", "webp"])
     use_sample = st.checkbox("Use built-in sample image instead", value=False)
 
-    st.subheader("Number of clusters (K)")
-    k_mode_label = st.radio(
-        "K selection", ["Auto (Davies-Bouldin)", "Manual"],
-        key="k_mode_radio", label_visibility="collapsed",
-        help="Auto: finds the best K for the original and the decorrelated image "
-             "separately and runs all combinations (4 experiments). "
-             "Manual: one K for both images, DBI search skipped (faster).")
-    if k_mode_label == "Manual":
-        st.slider("K", 2, 20, key="p_manual_k")
+    st.info("K is chosen automatically: the Davies-Bouldin Index is searched on the "
+            "decorrelated image, and both images are clustered with that K.")
 
     with st.expander("Advanced settings"):
         st.number_input("Max image side (px)", 64, 2000, step=64, key="p_max_side",
@@ -190,10 +181,9 @@ if run:
         st.error(f"Could not read the image: {e}")
         st.stop()
 
-    mode = "auto" if k_mode_label.startswith("Auto") else "manual"
     with st.status("Running...", expanded=True) as status:
         try:
-            res = pl.run_all(img, mode, p, log=lambda m: st.write(m))
+            res = pl.run_all(img, p, log=lambda m: st.write(m))
         except Exception as e:
             status.update(label="Failed", state="error")
             st.error(f"Pipeline error: {e}")
@@ -201,9 +191,8 @@ if run:
         status.update(label="Finished", state="complete", expanded=False)
 
     figs = {"pc_histograms.png": fig_pc_hist(res["pc_before"], res["pc_after"]),
-            "rgb_correlation.png": fig_corr(res["corr_o"], res["corr_d"])}
-    if res["dbi_o"] is not None:
-        figs["dbi_vs_k.png"] = fig_dbi(res)
+            "rgb_correlation.png": fig_corr(res["corr_o"], res["corr_d"]),
+            "dbi_vs_k.png": fig_dbi(res)}
     res["figs"] = figs
     res["zip"] = build_zip(res, {n: fig_bytes(f) for n, f in figs.items()})
     st.session_state["res"] = res
@@ -218,8 +207,7 @@ if res is None:
 
 h, w = res["shape"]
 st.write(f"Image: **{w} x {h}** px ({h*w:,} pixels) | "
-         f"K mode: **{'Auto (DBI)' if res['k_mode']=='auto' else 'Manual'}** | "
-         f"K values clustered: **{', '.join(map(str, res['ks']))}**")
+         f"Optimal K (from decorrelated image): **{res['k']}**")
 
 tabs = st.tabs(["1. Enhancement", "2. Choosing K", "3. Cluster maps",
                 "4. Comparison", "5. Download"])
@@ -268,41 +256,32 @@ with tabs[0]:
 
 # ---- Tab 2 ----
 with tabs[1]:
-    if res["dbi_o"] is None:
-        st.info("Manual K mode: the Davies-Bouldin search was skipped. "
-                "Switch to Auto in the sidebar to see it.")
-    else:
-        c1, c2 = st.columns(2)
-        c1.metric("Best K, original", res["k_o"], help=f"DBI = {res['best_dbi_o']:.4f}")
-        c2.metric("Best K, decorrelated", res["k_d"], help=f"DBI = {res['best_dbi_d']:.4f}")
-        st.pyplot(res["figs"]["dbi_vs_k.png"])
-        with st.expander("DBI values"):
-            a, b = st.columns(2)
-            a.dataframe(res["dbi_o"].round(4), width="stretch")
-            b.dataframe(res["dbi_d"].round(4), width="stretch")
+    st.metric("Optimal K (decorrelated image)", res["k"],
+              help=f"Davies-Bouldin index = {res['best_dbi']:.4f}")
+    st.caption("The Davies-Bouldin search runs on the decorrelated image only. "
+               "Both images are then clustered with this K.")
+    st.pyplot(res["figs"]["dbi_vs_k.png"])
+    with st.expander("DBI values"):
+        st.dataframe(res["dbi"].round(4), width="stretch")
 
 # ---- Tab 3 ----
 with tabs[2]:
+    k, r = res["k"], res["run"]
     st.caption("Cluster colours are labels only and are not matched between the two images.")
-    for k in res["ks"]:
-        r = res["runs"][k]
-        st.subheader(f"K = {k}")
-        c1, c2 = st.columns(2)
-        c1.image(r["map_o"], caption=f"Original: cluster map (K={k})", width="stretch")
-        c2.image(r["map_d"], caption=f"Decorrelated: cluster map (K={k})", width="stretch")
-        c1.image(r["seg_o"], caption=f"Original: colour segmentation (K={k})", width="stretch")
-        c2.image(r["seg_d"], caption=f"Decorrelated: colour segmentation (K={k})", width="stretch")
+    c1, c2 = st.columns(2)
+    c1.image(r["map_o"], caption=f"Original: cluster map (K={k})", width="stretch")
+    c2.image(r["map_d"], caption=f"Decorrelated: cluster map (K={k})", width="stretch")
+    c1.image(r["seg_o"], caption=f"Original: colour segmentation (K={k})", width="stretch")
+    c2.image(r["seg_d"], caption=f"Decorrelated: colour segmentation (K={k})", width="stretch")
 
 # ---- Tab 4 ----
 with tabs[3]:
-    for k in res["ks"]:
-        r = res["runs"][k]
-        st.subheader(f"K = {k}")
-        c1, c2 = st.columns([1, 1.3])
-        c1.image(r["diff"], caption="Black = same cluster (after label matching), white = changed",
-                 width="stretch")
-        c1.write(f"**{r['pct_same']:.2f}%** same, **{r['pct_changed']:.2f}%** changed")
-        c2.pyplot(fig_sizes(r, k))
+    k, r = res["k"], res["run"]
+    c1, c2 = st.columns([1, 1.3])
+    c1.image(r["diff"], caption="Black = same cluster (after label matching), white = changed",
+             width="stretch")
+    c1.write(f"**{r['pct_same']:.2f}%** same, **{r['pct_changed']:.2f}%** changed")
+    c2.pyplot(fig_sizes(r, k))
 
     st.subheader("Clustering quality")
     st.dataframe(res["metrics"].style.format({
@@ -312,18 +291,16 @@ with tabs[3]:
                "each image in its own feature space. Silhouette and Calinski-Harabasz: higher is better. "
                "Davies-Bouldin: lower is better.")
 
-    st.markdown("**Which image scores better at each K**")
-    rows = []
-    for k in res["ks"]:
-        o = res["metrics"][(res["metrics"]["K"] == k) & (res["metrics"]["Image Version"] == "Original")].iloc[0]
-        d = res["metrics"][(res["metrics"]["K"] == k) & (res["metrics"]["Image Version"] == "Decorrelated")].iloc[0]
-        rows.append({
-            "K": k,
-            "Silhouette": "Original" if o["Silhouette Score"] > d["Silhouette Score"] else "Decorrelated",
-            "Davies-Bouldin": "Original" if o["Davies-Bouldin Index"] < d["Davies-Bouldin Index"] else "Decorrelated",
-            "Calinski-Harabasz": "Original" if o["Calinski-Harabasz Index"] > d["Calinski-Harabasz Index"] else "Decorrelated",
-        })
-    st.dataframe(pd.DataFrame(rows), hide_index=True)
+    m = res["metrics"]
+    o = m[m["Image Version"] == "Original"].iloc[0]
+    d = m[m["Image Version"] == "Decorrelated"].iloc[0]
+    st.markdown("**Which image scores better**")
+    st.dataframe(pd.DataFrame([{
+        "K": k,
+        "Silhouette": "Original" if o["Silhouette Score"] > d["Silhouette Score"] else "Decorrelated",
+        "Davies-Bouldin": "Original" if o["Davies-Bouldin Index"] < d["Davies-Bouldin Index"] else "Decorrelated",
+        "Calinski-Harabasz": "Original" if o["Calinski-Harabasz Index"] > d["Calinski-Harabasz Index"] else "Decorrelated",
+    }]), hide_index=True)
 
     with st.expander("Cluster size table"):
         st.dataframe(res["cluster_sizes"].round(2), width="stretch", hide_index=True)
